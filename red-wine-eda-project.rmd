@@ -1,0 +1,388 @@
+# Red Wine Exploratory Data Analysis
+### Cid Medeiros, MSc.
+### July 31, 2019
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+# Load all of the packages that you end up using in your analysis in this code
+# chunk.
+
+# Notice that the parameter "echo" was set to FALSE for this code chunk. This
+# prevents the code from displaying in the knitted HTML output. You should set
+# echo=FALSE for all code chunks in your file, unless it makes sense for your
+# report to show the code that generated a particular plot.
+
+# The other parameters for "message" and "warning" should also be set to FALSE
+# for other code chunks once you have verified that each plot comes out as you
+# want it to. This will clean up the flow of your report.
+setwd('C:/Users/cidm/data-science/R/R-project')
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(dplyr)
+library(scales)
+library(corrplot)
+library(RColorBrewer)
+```
+
+```{r echo=FALSE, Load_the_Data}
+# Load the Data
+wine <- read.csv('wineQualityReds.csv')
+```
+
+## Abstract
+
+## Introduction
+
+  Wine is one of the oldest alcoholic drinks known to humans. According to the book Ancient Wine: The Search for the Origins of Viniculture, authored by Professor Patrick McGovern (University of Pennsylvania Museum), it dates back as far as 8000 BC in Georgia, the former Soviet republic. On the top of its exhilarating effect, the long fascination of humans with wine is probably related to its complex chemical and physical stimuli meeting our complex palate system.
+  
+  One possible way to get a glimpse of the human taste system is to take a quick walk through the structures it is composed of. For humans to taste something, it requires around 10,000 taste buds. Most of these buds are spread throughout the tongue’s several papillae. There are also taste buds located on the roof, sides, and back of the mouth, and surprisingly in the throat as well.
+
+  However, not only the mouth participates in it. An important concept behind tasting is that the smell and texture also are part of it. While millions of olfactory receptors feed the brain with chemical inputs, the trigeminal nerve reports to the brain physical stimuli, such as texture and temperature of food and drinks we ingest. How we deal with chemical stimuli in smelling is breathtaking. It is estimated that humans can sense more than 10,000 different smells. Those smells combined with all possible tastes and textures create incredibly rich sensory capabilities, and wine takes advantage of them.
+
+## Analysis
+
+### Univariate Analysis
+
+#### What is the structure of your dataset?
+
+  The dataset I’m about to explore provides us with physicochemical data on 1599 red wines from the Vinho Verde Portuguese wine region. The data also includes the rating for each wine. At least 3 wine experts rated the quality of each wine, providing a rating between 0 (very bad) and 10 (excellent). The final sensory score is given by the median of these evaluations. So, this dataset is a good opportunity to investigate what physicochemical properties best please the complex human palate system, or at least the palate of oenologists. Among the physicochemical properties are those related to the wine acidity, its levels of sulfur dioxide, chlorides, sulfates, residual sugar, density, and alcohol.
+  
+  It’s a tidy dataset, so no cleaning or wrangling procedures were required. I’ve used read.csv() function to read the CSV file into an R data frame object. The reading and loading time is marginal. Below a table displaying some important information about the dataset.
+  
+```{r echo=FALSE, dataframe_structure}
+# Get and display the dataset structure
+str(wine)
+```
+  
+#### What is/are the main feature(s) of interest in your dataset?
+
+  The main feature of interest is quality, which tells us how good the wine was perceived to be. So, the first question I wanted to answer was how ubiquitous high-rated wine was in the dataset. So I’ve plotted a histogram on wine ratings. The histogram indicates that most of the wine was rated as 5 or 6 (82.5%), meanwhile wines with a rating equal to or higher than 7 accounts for 13.5% of all wine, leaving lower-rated wines with 4%. Notice there’s no ratings above 8 or below 3.
+    
+```{r echo=TRUE, histogram_quality}
+# plot histogram with percentage for the wine ratings
+# input: red-wine dataset
+# output: histogram plot with percentage
+# In order to plot the percentages at the desired position, it was used geom_bar combined with geom_text
+
+ggplot(aes(x=quality), data = wine)+
+  geom_bar(position = 'dodge', color='black', fill='red') +
+  geom_text(aes(label = scales::percent(..prop..)), 
+            position = position_dodge(width = 0.9), stat = "count", vjust = -0.5)+
+  scale_x_continuous(breaks = seq(1,10,1))+
+  labs(x='Wine Rate', y='Frequency', title = 'Wine Quality Histogram with Percentage')
+```
+
+### Did you create any new variables from existing variables in the dataset?
+
+  Next, I’m going to arbitrarily label as “good wine” those with a rating above six, as “regular” those ranging from 4 up to 6, and “poor” the wines rating below 4. In order to achieve that I’ve used the cut() function to store on the wineCat variable the three different wine categories. With these categories, I pretend to highlight the differences among them across all properties so I can further investigate the most notorious differences.
+
+```{r echo=TRUE, create_wine_categories}
+# use quality to classify the rated wines into arbitrary categories
+# The rating values of quality is used to determine the categories
+# poor(1-4), regular(5-6), good(7-10)
+# input: the wine quality series of values
+# output: new column to the wine dataframe containg the quality categories
+
+wine$wineCat <- cut(wine$quality, c(1,4,6,10), labels = c('Poor', 'Regular', 'Good'))
+```
+
+### What other features in the dataset do you think will help support your investigation into your feature(s) of interest?
+
+  After comparing histograms with density graphs, searching for the best way to highlight the differences between the wine categories, I concluded the density graphs proved better for the task. So I created a function to be applied to the plotting of grids with the density graphs. Each density graph is colored by the wine categories. Below are the results.
+  
+  There’s an important detail about comparing density plots between the wine categories: they have a very different presence on the dataset. The wines considered as regular dominate the dataset. Then, to allow an appropriate comparison across the properties, all plots will have the y-axis scaled from 0 to 1, making each category proportionally plotted.
+
+```{r echo=TRUE, density_function}
+# density_cat - plot density graphs for the variable property cut by wine category 
+# input - property: physicochemical property to be plotted; lab_x: name for the
+# x axis; x_scale: step number for the breaks in the x axis
+# output: density plot for the specified property
+
+density_cat <- function(property, lab_x, x_scale)
+{
+  ggplot(wine, aes(!!as.name(property), fill = wineCat))+
+    geom_density(alpha = 0.4, aes(y = ..scaled..)) +
+    scale_x_continuous(breaks = seq(min(wine[[property]]), max(wine[[property]]), x_scale))+
+    labs(x=lab_x, y = 'Category Proportion', title = paste(lab_x,'Histogram by Category',sep=' '))
+}
+```
+
+```{r echo=FALSE, apply_density_function}
+fx_acidity <- density_cat('fixed.acidity', 'Fixed Acidity', 2)
+vlt_acidity <- density_cat('volatile.acidity', 'Volatile Acidity', .3)
+ctr_acidity <- density_cat('citric.acid', 'Citric Acidity', .2)
+rsd_sugar <- density_cat('residual.sugar', 'Resd. Sugar', 2.5)
+clrd <- density_cat('chlorides', 'Chlorides', .13)
+fresulfdio <- density_cat('free.sulfur.dioxide', 'Free Sulf. Diox.', 8)
+
+grid.arrange(fx_acidity,ctr_acidity,vlt_acidity,rsd_sugar,clrd,fresulfdio, ncol=2)
+```
+
+```{r echo=FALSE, apply_density_function_2}
+totsulfdio <- density_cat('total.sulfur.dioxide', 'Total Sulf. Diox.', 40)
+alcohol <- density_cat('alcohol', 'Alcohol (%ABV)', 1)
+densty <- density_cat('density', 'Density', .01)
+ph <- density_cat('pH', 'Ph', .2)
+sulphates <- density_cat('sulphates', 'Sulphates', .3)
+
+grid.arrange(totsulfdio, alcohol,densty,ph, sulphates, ncol=2)
+```
+
+  Based on the graphs above, five variables seem to be able to better distinguish the difference between the wine categories. They are “Sulphates”, “Alcohol”, “Volatile Acidity”, “Fixed Acidity” and “Citric Acidity”.
+  
+  When it comes to density, the plot shows a slight tendency for the “good” wines to be less dense. I think density requires a second approach to shed light on its role in the wine tasting business. So, I’ve plotted a box-plot for it.
+
+```{r echo=FALSE, density_box_plot}
+# plot box-plot for density graphs cut by wine category 
+# input - wine dataset
+# output: box-plot for density with median and mean
+
+ggplot(wine, aes(y=density, x=wineCat))+
+  geom_boxplot()+stat_summary(fun.y = mean, geom = 'point', shape = 4)
+```
+
+  The box-plot indicates that good-wines’ densities have both median and mean at lower values than the other two categories, as well as, approximately, half of those wines hold lower density values than any other wine category.
+
+### Of the features you investigated, were there any unusual distributions?
+
+  The distribution for the variables highlighted before indicated some distinguished patterns for wines of higher quality. These patterns point out to values, regions on the distribution, where is more likely for good wines than for not-so-good wines to be found on. The exception is volatile acidity which seems to be a good indicator for lower quality wines.
+
+### Bivariate Analysis
+
+  I wanted to get an overview of all possible bivariate relationships between the variables in the dataset. I was especially interested to investigate how the six variables that stood out during the univariate analysis relate to each other and to other variables.
+  
+  Initially, focusing primarily on linear relations, I’ve created a table with all the Pearson correlation coefficients. The idea is to pinpoint which properties are working together to please the human taste.
+
+```{r echo=FALSE, coorr_table}
+num_wine <- wine[, 2:13] #slice the dataset into the numerical variables only as a requirement for the coorr function
+coorr <- cor(num_wine)
+round(coorr, 2) #round the numbers up to 2 decimal places
+```
+
+### Bivariate Plots Section
+
+  The correlation table shows us there’s no correlation above 0.7. Although we can see some coefficient near that threshold. For example, there are pairs with correlations both negative and positive revolving around 0.67 and 0.68. Even though the table could be good for consulting the coefficients, it doesn’t do a great job telling the whole story at a glance. I think a correlogram would better at accomplishing that. To plot a correlogram, I’ve used the corrplot R library using the pie method to emphasize how strong correlations are.
+
+```{r echo=TRUE, plot_matrix}
+# plot correlogram for linear correlation coefficients
+# input: matrix containing all variables correlations and coefficients
+# output: correlogram with the pie method plotted on
+
+corrplot(coorr, type = "upper", order = "hclust", tl.col = "black", tl.srt = 45, method="pie")
+```
+
+  The correlogram brings us a lot of valuable information. From the heat-bar to the right we can learn how different tones of red and blue tell us about positive and negative correlations. The pies inside each cell intersecting each pair of variables make it easy to strong correlations to stand out.
+  Using what I’ve learned from the correlogram, I’ve divided the most notorious correlations in two groups: negative correlated and positive correlated. Then, I’ve written a function so I could plot scatterplots for the pairs of properties of those two groups with a smoother line to better grasp the trends between them.
+s between them.
+  
+```{r echo=TRUE, scatterplot_function}
+# plot scatterplot with smooth for the informed properties
+# input - prop1: first physicochemical property to be plotted;
+# prop2: second physicochemical property to be plotted;
+# lab_x: name for the x axis; lab_y: name for the y axis;
+# output: scatterplot for the specified properties
+
+scatterplot <- function(prop1, prop2, lab_x, lab_y)
+{
+  ggplot(wine, aes(wine[,prop1], wine[,prop2]))+
+  geom_point(alpha=1/5, position = position_jitter(h = 0))+
+  geom_smooth(method='lm', se=TRUE)+
+  labs(x=lab_x, y = lab_y, title = paste(lab_y, 'and', lab_x, sep=' '))
+}
+```
+
+```{r echo=FALSE, apply_scatterplot_function}
+scat_den_alc <- scatterplot('alcohol','density','Alcohol (%ABV)', 'Density')
+scat_ctr_vol <- scatterplot('citric.acid','volatile.acidity','Ctr. Acid g/cm^3', 'Vol. Acidity g/cm^3')
+scat_fx_ph <- scatterplot('fixed.acidity','pH','Fixed Acid g/cm^3', 'pH')
+scat_ctr_ph <- scatterplot('citric.acid','pH','Citric Acid g/cm^3', 'pH')
+grid.arrange(scat_den_alc,scat_ctr_vol,scat_fx_ph,scat_ctr_ph, ncol=2, nrow=2, top=textGrob('Variables with Negative Correlation',gp=gpar(fontsize=16,font=3)))
+```
+
+```{r echo=FALSE, apply_scatterplot_function1}
+scat_qua_vol <- scatterplot('quality','volatile.acidity','Quality', 'Vol. Acidity g/cm^3')
+grid.arrange(scat_qua_vol, ncol=2, nrow=1)
+```
+
+```{r echo=FALSE, apply_scatterplot_function_2}
+scat_den_fx <- scatterplot('fixed.acidity','density','Fixed Acid g/cm^3', 'Density')
+scat_alc_qual <- scatterplot('quality','alcohol', 'Quality','Alcohol (%ABV)')
+scat_ctr_fx <- scatterplot('citric.acid','fixed.acidity','Ctr. Acid g/cm^3', 'Fixed Acid g/cm^3')
+scat_Tsul_Fsul <- scatterplot('free.sulfur.dioxide','total.sulfur.dioxide','Free Sulf. Diox', 'Total Sulf. Diox')
+grid.arrange(scat_den_fx, scat_alc_qual,scat_ctr_fx,scat_Tsul_Fsul, ncol=2, nrow=2, top=textGrob('Variables with Positive Correlation',gp=gpar(fontsize=16,font=3)))
+```
+
+### Talk about some of the relationships you observed in this part of the \
+### investigation. How did the feature(s) of interest vary with other features in \ the dataset?
+### Did you observe any interesting relationships between the other features \
+### (not the main feature(s) of interest)?
+
+  Density is the measurement of mass per unit volume, while alcohol is a liquid which molecules are known to be more dispersed than water or a mixture of water with other different organic compounds. In other words, alcohol has less mass per unit volume. As a result, the more alcohol a wine has, the lower the density measured from it. The first negative scatterplot registers just that.
+  
+  To better understand some of the correlations between the following features, it’s important to make some comments about wine acidity. Acids are an important component in winemaking, they are present in both grapes and the liquid resulting from the fermentation process. Acid's primarily roles are balancing the wine's sweetness and bitterness, as well as protecting the wine from spoilage during the aging process. Tartaric, malic and citric are the primary acids found in grapes. Acetic, butyric, lactic and succinic acids become important components in the finished wines. The majority of the acids in the wine are known to be fixed acids, hence, with less volatility. The most notorious exception is the acetic acid, the same found in vinegar, which is volatile and can negatively impact the final tasting of the wine. Acetic acid is the most volatile acid found in wine, which makes it the one that most contribute to the volatile acidity feature.
+  
+  The negative correlation between volatile acidity and citric acidity is explained by the citric acid’s low volatile rate. The more citric acid a wine has the fresher it will taste and less volatile acidity overall it will present. These two properties are correlated with quality. Both the proportional density-graphs cut by category for volatile acidity and citric acidity confirm the trends in the second and fifth negative correlated scatterplots.
+  
+  The feature pH is the measurement of hydrogen ions on a logarithmic scale. Hydrogen ions are a kind of chemical markers for acid presence, hence the more concentrated they are in a mixture, the more acid the mixture is and lower the value for pH is as well. The third and fourth scatterplot in the negatively correlated scatter plots section show us how the pH values decrease as a function of the increasing citric acid or the overall fixed acidity in the wine.
+  
+  Fixed acidity measures the opposite of volatile acidity, and gets its major contributions from the less volatile acids such as tartaric, malic, citric, and succinic. This means that fixed acidity is sensitive to the presence of organic acids in the mixture. Interesting enough, a greater presence of acids molecule in the wine also increases its mass per unit volume. In other words, its density. Therefore, the density increases with the increasing of fixed acids in the wine, which is well illustrated by the first scatterplot with a positive correlation.
+  
+  The positive correlation between alcohol and quality seem to be due to oenologists’ preference for wine with greater alcoholic compositions. The last two positive correlations are expected for both Citric Acid and Free Sulfur Dioxide are constituents themselves for Fixed Acidity and Total Sulfur Dioxide, respectively. So, if the constituent increases the main feature naturally increases.
+
+### What was the strongest relationship you found?
+
+  The strong relationship is the negative correlation between pH and fixed acidity with a Pearson coefficient of -0.68.
+
+# Multivariate Plots Section
+
+# Multivariate Analysis
+
+  In this multivariate analysis, I've decided to plot a third variable on top of the previous scatter plots using two strategies at the same time. I colored the plot by wineCat, and also plotted a smoothed best line showing the trend in each plot, also by wineCat.
+
+  The smooth line attempts to display the non-random behavior in the data from the random fluctuations, which, once cut by wine category, could support any possible separation that is not so easy to been seen using only colors due to overplotting. The method used to fit the line was the "linear model".
+
+```{r echo=TRUE, scatterplot_cut_function}
+# plot scatter plot cut and colored by wine category with the smooth line
+# input - prop1: first physicochemical property to be plotted;
+# prop2: second physicochemical property to be plotted;
+# lab_x: name for the x axis; lab_y: name for the y axis;
+# output: scatterplot for the specified properties cut and colored by wine category
+
+scatterplot_cut <- function(prop1, prop2, lab_x, lab_y)
+{
+  ggplot(wine, aes(wine[,prop1], wine[,prop2], colour = wineCat))+
+  geom_point(alpha=1/3, position = position_jitter(h = 0))+
+  geom_smooth(method='lm', se=FALSE)+
+  labs(x=lab_x, y = lab_y, title = paste(lab_y, 'and', lab_x, 'by wineCat', sep=' '))
+}
+```
+
+
+```{r echo=FALSE, apply_scatterplot_cut_function}
+scat_den_alc_cut <- scatterplot_cut('alcohol','density','Alcohol (%ABV)', 'Density')
+scat_den_alc_cut
+```
+
+
+```{r echo=FALSE, apply_scatterplot_cut_function2}
+scat_ctr_vol_cut <- scatterplot_cut('citric.acid','volatile.acidity','Ctr. Acid g/cm^3', 'Vol. Acidity g/cm^3')
+scat_ctr_vol_cut
+```
+
+
+```{r echo=FALSE, apply_scatterplot_cut_function3}
+scat_fx_ph_cut <- scatterplot_cut('fixed.acidity','pH','Fixed Acid g/cm^3', 'pH')
+scat_fx_ph_cut
+```
+
+
+```{r echo=FALSE, apply_scatterplot_cut_function4}
+scat_ctr_ph_cut <- scatterplot_cut('citric.acid','pH','Citric Acid g/cm^3', 'pH')
+scat_ctr_ph_cut
+```
+
+
+```{r echo=FALSE, apply_scatterplot_cut_function5}
+scat_qua_vol_cut <- scatterplot_cut('quality','volatile.acidity','Quality', 'Vol. Acidity g/cm^3')
+scat_qua_vol_cut
+```
+
+
+```{r echo=FALSE, apply_scatterplot_cut_function6}
+scat_den_fx_cut <- scatterplot_cut('fixed.acidity','density','Fixed Acid g/cm^3', 'Density')
+scat_den_fx_cut
+```
+
+
+```{r echo=FALSE, apply_scatterplot_cut_function7}
+scat_alc_qual_cut <- scatterplot_cut('quality','alcohol','Quality','Alcohol (%ABV)')
+scat_alc_qual_cut
+```
+
+
+```{r echo=FALSE, apply_scatterplot_cut_function8}
+scat_ctr_fx_cut <- scatterplot_cut('citric.acid','fixed.acidity','Ctr. Acid g/cm^3', 'Fixed Acid g/cm^3')
+scat_ctr_fx_cut
+```
+
+
+```{r echo=FALSE, apply_scatterplot_cut_function9}
+scat_Tsul_Fsul_cut <- scatterplot_cut('free.sulfur.dioxide','total.sulfur.dioxide','Free Sulf. Diox', 'Total Sulf. Diox')
+scat_Tsul_Fsul_cut
+```
+
+### Talk about some of the relationships you observed in this part of the investigation.
+### Were there features that strengthened each other in terms of looking at your feature(s) of interest?
+
+  The scatter plot featuring volatile acidity and citric acidity presents three parallel lines, which can be useful to predict the wine category as it clearly shows each category best fit line. One might apply these best lines functions to predict the wine category.
+
+### Were there any interesting or surprising interactions between features?
+
+  As acidity holds such a strong taste and is really important in wine quality, I was expecting the graphs involving pH to be more decisive in separating the wine categories, but surprisingly that was not the case. The lines for the pH graphs were pretty much intertwined.
+
+------
+
+# Final Plots and Summary
+
+### Plot One
+
+
+```{r echo=FALSE, Plot_One}
+# plot box-plot for density graphs cut by wine category 
+# input - wine dataset
+# output: box-plot for density with median and mean
+
+ggplot(wine, aes(y=density, x=wineCat))+
+  geom_boxplot()+stat_summary(fun.y = mean, geom = 'point', shape = 4)+
+  labs(x='Wine Category', y = 'Density (g/cm3)', title = 'Density box-plot by Wine Category')
+```
+
+
+### Description One
+
+  Even though the grids of density-graphs are beautiful and were very useful at the initial exploration and understanding of the dataset, I’ve chosen the density (g/cm3) box-plot over them due to the importance of the density, as a physicochemical property, in separating good wines from the rest of the wines. Note how “good” wines have both median and mean at lower values than the rest of the categories, and, approximately, half of the good wines are much less dense when compared to the upper halves of the “poor” and the “regular” wines. Another useful implicit correlation when analyzing density is that the more alcohol a wine has, the lower the density is, and the more alcoholic the wine is the better ratings it gets. In the end, this box-plot has a lot of good information embedded in it.
+
+### Plot Two
+
+```{r echo=FALSE, Plot_Two}
+# plot correlogram for linear correlation coefficients
+# input: matrix containing all variables correlations and coefficients
+# output: correlogram with the pie method plotted on
+
+corrplot(coorr, type = "upper", order = "hclust", tl.col = "black", tl.srt = 45, method="pie", title = 'Pearson Coefficients Correlogram',  mar=c(0,0,1,0))
+```
+
+### Description Two
+
+  The second plot is the correlogram. It’s a very useful plot for it carries a lot of information about the bivariate relations between the features in the dataset. The combination of the heat-bar scale matching colors with the pies inside each cell, intersecting each pair of variables, make easy to strong correlations to stand out.
+The correlogram guided the dividing of the correlations into negative correlated features and the positive correlated features. Knowing the direction and the strength of correlations was key in deciding which plots should later be used on the EDA process.
+
+### Plot Three
+
+```{r echo=FALSE, Plot_Three}
+# scatter plot cut and colored by wine category with the smooth line
+# input - prop1: first physicochemical property to be plotted;
+# prop2: second physicochemical property to be plotted;
+# lab_x: name for the x axis; lab_y: name for the y axis;
+# output: scatterplot for the specified properties cut and colored by wine category
+
+scat_ctr_vol_cut <- scatterplot_cut('citric.acid','volatile.acidity','Ctr. Acid g/cm^3', 'Vol. Acidity g/cm^3')
+scat_ctr_vol_cut
+```
+
+
+### Description Three
+
+  The scatter plot for Volatile Acidity and Citric Acidity shows three clear and distinct trends among the wines in the data. The more volatile acids a wine has, the less citric acid it tends to have and then, less freshness its taste bears. As a result, good wines combine more citric acidity with less volatile acidity. Regular wines can be found in the middle of the plot, leaving the upper volatile values with the poor wines.
+
+------
+
+# Reflection
+
+  The main technical difficulties I had was fine-tuning the position of all plot’s components such as percentages, legends, labels, as well as properly fitting variable's names and titles on the plotting area. I had to spend a significant amount of time getting familiar with all ggplot2 complementary libraries. On the other hand, learning about the correlogram and how simple it to plot it was a good surprise and success for future endeavors.
+  What I’ve learned from the dataset was that the ultimate goal of winemaking seems to be the search for balance between most of the features. The balance should also focus on tweaking some of the variables into a higher or lower presence.
+  
+  For example, it is hard to find a balance between fixed acidity, density, alcohol, and citric acidity. While is expected the wine to be better appreciated with higher levels of alcohol and citric acids, these features have opposite effects on density. On its side, citric acidity contributes to the increase of fixed acidity, which increases the density of the wine. However, on the alcohol side, when it increases, density decreases. The big surprise is that alcoholic less-dense more-fresh (citric) wine seems to better please the human palate.
+  
+  For future works, I would include some Principal Component Analysis (PCA). I hypothesize that it would result in components that would summarise acidity, including pH, and sulfates into their respective components. Even though each variable would still be valuable in their own for quality control purposes, I think a prediction model might work better after PCA.
+
