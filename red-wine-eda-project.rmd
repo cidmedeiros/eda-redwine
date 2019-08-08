@@ -76,7 +76,7 @@ ggplot(aes(x=quality), data = wine)+
 
   Next, I’m going to arbitrarily label as “good wine” those with a rating above six, as “regular” those ranging from 4 up to 6, and “poor” the wines rating below 4. In order to achieve that I’ve used the cut() function to store on the wineCat variable the three different wine categories. With these categories, I pretend to highlight the differences among them across all properties so I can further investigate the most notorious differences.
 
-```{r echo=TRUE, create_wine_categories}
+```{r echo=TRUE, create_wine_categories winecat}
 # use quality to classify the rated wines into arbitrary categories
 # The rating values of quality is used to determine the categories
 # poor(1-4), regular(5-6), good(7-10)
